@@ -3,7 +3,7 @@ package continuous_querier
 import (
 	"errors"
 	"fmt"
-	"log"
+	//"log"
 	"os"
 	"strings"
 	"sync"
@@ -13,6 +13,7 @@ import (
 	"github.com/influxdb/influxdb/influxql"
 	"github.com/influxdb/influxdb/meta"
 	"github.com/influxdb/influxdb/tsdb"
+	"github.com/qiniu/log.v1"
 )
 
 const (
@@ -57,6 +58,10 @@ type Service struct {
 	lastRuns map[string]time.Time
 	stop     chan struct{}
 	wg       *sync.WaitGroup
+}
+
+func init() {
+	log.SetOutputLevel(0)
 }
 
 // NewService returns a new instance of Service.
@@ -157,6 +162,7 @@ func (s *Service) backgroundLoop() {
 				s.runContinuousQueries()
 			}
 		case <-time.After(s.RunInterval):
+			log.Debug("s.RunInterval=", s.RunInterval)
 			if s.MetaStore.IsLeader() {
 				s.runContinuousQueries()
 			}
@@ -166,6 +172,7 @@ func (s *Service) backgroundLoop() {
 
 // runContinuousQueries gets CQs from the meta store and runs them.
 func (s *Service) runContinuousQueries() {
+	log.Debug("runContinuousQueries()!")
 	// Get list of all databases.
 	dbs, err := s.MetaStore.Databases()
 	if err != nil {
@@ -176,6 +183,7 @@ func (s *Service) runContinuousQueries() {
 	for _, db := range dbs {
 		// TODO: distribute across nodes
 		for _, cq := range db.ContinuousQueries {
+			log.Debug("db=", db.Name, " cq=", cq)
 			if err := s.ExecuteContinuousQuery(&db, &cq); err != nil {
 				s.Logger.Printf("error executing query: %s: err = %s", cq.Query, err)
 			}
@@ -185,6 +193,8 @@ func (s *Service) runContinuousQueries() {
 
 // ExecuteContinuousQuery executes a single CQ.
 func (s *Service) ExecuteContinuousQuery(dbi *meta.DatabaseInfo, cqi *meta.ContinuousQueryInfo) error {
+	log.Debug("ExecuteContinuousQuery(dbi *meta.DatabaseInfo, cqi *meta.ContinuousQueryInfo)!")
+	log.Debug("dbi=", dbi, " cqi=", cqi)
 	// TODO: re-enable stats
 	//s.stats.Inc("continuousQueryExecuted")
 
@@ -205,6 +215,7 @@ func (s *Service) ExecuteContinuousQuery(dbi *meta.DatabaseInfo, cqi *meta.Conti
 	// See if this query needs to be run.
 	computeNoMoreThan := time.Duration(s.Config.ComputeNoMoreThan)
 	run, err := cq.shouldRunContinuousQuery(s.Config.ComputeRunsPerInterval, computeNoMoreThan)
+	log.Debug("run=", run)
 	if err != nil {
 		return err
 	} else if !run {
@@ -243,6 +254,7 @@ func (s *Service) ExecuteContinuousQuery(dbi *meta.DatabaseInfo, cqi *meta.Conti
 	recomputeNoOlderThan := time.Duration(s.Config.RecomputeNoOlderThan)
 
 	for i := 0; i < s.Config.RecomputePreviousN; i++ {
+		log.Debug("i=", i, " s.Config.RecomputePreviousN=", s.Config.RecomputePreviousN)
 		// if we're already more time past the previous window than we're going to look back, stop
 		if now.Sub(startTime) > recomputeNoOlderThan {
 			return nil
@@ -266,6 +278,7 @@ func (s *Service) ExecuteContinuousQuery(dbi *meta.DatabaseInfo, cqi *meta.Conti
 
 // runContinuousQueryAndWriteResult will run the query against the cluster and write the results back in
 func (s *Service) runContinuousQueryAndWriteResult(cq *ContinuousQuery) error {
+	log.Debug("runContinuousQueryAndWriteResult(cq *ContinuousQuery)! cq=", cq)
 	// Wrap the CQ's inner SELECT statement in a Query for the QueryExecutor.
 	q := &influxql.Query{
 		Statements: influxql.Statements{cq.q},
@@ -274,16 +287,19 @@ func (s *Service) runContinuousQueryAndWriteResult(cq *ContinuousQuery) error {
 	// Execute the SELECT.
 	ch, err := s.QueryExecutor.ExecuteQuery(q, cq.Database, NoChunkingSize)
 	if err != nil {
+		log.Debug("err=", err)
 		return err
 	}
 
 	// Read all rows from the result channel.
 	for result := range ch {
+		log.Debug("result=", result)
 		if result.Err != nil {
 			return result.Err
 		}
 
 		for _, row := range result.Series {
+			log.Debug("row=", row.Tags, row.Values)
 			// Convert the result row to points.
 			points, err := s.convertRowToPoints(cq.intoMeasurement(), row)
 			if err != nil {
@@ -328,30 +344,43 @@ func (s *Service) runContinuousQueryAndWriteResult(cq *ContinuousQuery) error {
 // convertRowToPoints will convert a query result Row into Points that can be written back in.
 // Used for continuous and INTO queries
 func (s *Service) convertRowToPoints(measurementName string, row *influxql.Row) ([]tsdb.Point, error) {
+	log.Debug("convertRowToPoints()!")
 	// figure out which parts of the result are the time and which are the fields
 	timeIndex := -1
 	fieldIndexes := make(map[string]int)
+	log.Debug("--------------------------------------------------1+++++++++++++++++++++")
 	for i, c := range row.Columns {
+		log.Debug("i=", i, " c=", c)
 		if c == "time" {
 			timeIndex = i
 		} else {
 			fieldIndexes[c] = i
 		}
 	}
+	log.Debug("--------------------------------------------------2+++++++++++++++++++++")
 
 	if timeIndex == -1 {
 		return nil, errors.New("error finding time index in result")
 	}
 
+	log.Debug("--------------------------------------------------3+++++++++++++++++++++")
 	points := make([]tsdb.Point, 0, len(row.Values))
 	for _, v := range row.Values {
+		log.Debug("--------------------------------------------------4+++++++++++++++++++++")
+		log.Debug("v=", v, " len(v)=", len(v), " len(fieldIndexes)=", len(fieldIndexes))
 		vals := make(map[string]interface{})
+		if len(v)-1 != len(fieldIndexes) {
+			return nil, fmt.Errorf("unknown field or tag name in select clause")
+		}
 		for fieldName, fieldIndex := range fieldIndexes {
+			log.Debug("fieldName=", fieldName, " fieldIndex=", fieldIndex)
 			vals[fieldName] = v[fieldIndex]
+			log.Debug("v[fieldIndex]=", v[fieldIndex])
 		}
 
+		log.Debug("--------------------------------------------------5+++++++++++++++++++++")
 		p := tsdb.NewPoint(measurementName, row.Tags, vals, v[timeIndex].(time.Time))
-
+		log.Debug("--------------------------------------------------6+++++++++++++++++++++")
 		points = append(points, p)
 	}
 
@@ -373,12 +402,14 @@ func (cq *ContinuousQuery) intoMeasurement() string { return cq.q.Target.Measure
 
 // NewContinuousQuery returns a ContinuousQuery object with a parsed influxql.CreateContinuousQueryStatement
 func NewContinuousQuery(database string, cqi *meta.ContinuousQueryInfo) (*ContinuousQuery, error) {
+	log.Debug("NewContinuousQuery()!")
 	stmt, err := influxql.NewParser(strings.NewReader(cqi.Query)).ParseStatement()
 	if err != nil {
 		return nil, err
 	}
 
 	q, ok := stmt.(*influxql.CreateContinuousQueryStatement)
+
 	if !ok || q.Source.Target == nil || q.Source.Target.Measurement == nil {
 		return nil, errors.New("query isn't a valid continuous query")
 	}
@@ -396,6 +427,7 @@ func NewContinuousQuery(database string, cqi *meta.ContinuousQueryInfo) (*Contin
 // lastRunTime of the CQ and the rules for when to run set through the config to determine
 // if this CQ should be run
 func (cq *ContinuousQuery) shouldRunContinuousQuery(runsPerInterval int, noMoreThan time.Duration) (bool, error) {
+	log.Debug("shouldRunContinuousQuery()!")
 	// if it's not aggregated we don't run it
 	if cq.q.IsRawQuery {
 		return false, errors.New("continuous queries must be aggregate queries")
