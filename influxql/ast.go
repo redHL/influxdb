@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/qiniu/log.v1"
 	"regexp"
 	"sort"
 	"strconv"
@@ -667,6 +668,7 @@ type SelectStatement struct {
 // HasDerivative returns true if one of the function calls in the statement is a
 // derivative aggregate
 func (s *SelectStatement) HasDerivative() bool {
+	//	log.Debug("HasDerivative()!")
 	for _, f := range s.FunctionCalls() {
 		if strings.HasSuffix(f.Name, "derivative") {
 			return true
@@ -678,8 +680,10 @@ func (s *SelectStatement) HasDerivative() bool {
 // IsSimpleDerivative return true if one of the function call is a derivative function with a
 // variable ref as the first arg
 func (s *SelectStatement) IsSimpleDerivative() bool {
+	//	log.Debug("IsSimpleDerivative()!")
 	for _, f := range s.FunctionCalls() {
 		if strings.HasSuffix(f.Name, "derivative") {
+			log.Debug("f.Name=", f.Name)
 			// it's nested if the first argument is an aggregate function
 			if _, ok := f.Args[0].(*VarRef); ok {
 				return true
@@ -925,6 +929,7 @@ func (s *SelectStatement) hasTimeDimensions(node Node) bool {
 }
 
 func (s *SelectStatement) validate(tr targetRequirement) error {
+	//	log.Debug("validate(tr targetRequirement)!")
 	if err := s.validateDistinct(); err != nil {
 		return err
 	}
@@ -985,6 +990,7 @@ func (s *SelectStatement) validateAggregates(tr targetRequirement) error {
 }
 
 func (s *SelectStatement) HasDistinct() bool {
+	//log.Debug("HasDistinct()!")
 	// determine if we have a call named distinct
 	for _, f := range s.Fields {
 		switch c := f.Expr.(type) {
@@ -1000,6 +1006,7 @@ func (s *SelectStatement) HasDistinct() bool {
 }
 
 func (s *SelectStatement) validateDistinct() error {
+	//log.Debug("validateDistinct()!")
 	if !s.HasDistinct() {
 		return nil
 	}
@@ -1077,6 +1084,8 @@ func (s *SelectStatement) validateCountDistinct() error {
 }
 
 func (s *SelectStatement) validateDerivative() error {
+	//	log.Debug("validateDerivative()!")
+	//	log.Debug("s.HasDerivative()=", s.HasDerivative())
 	if !s.HasDerivative() {
 		return nil
 	}
@@ -1301,8 +1310,10 @@ func walkNames(exp Expr) []string {
 
 // FunctionCalls returns the Call objects from the query
 func (s *SelectStatement) FunctionCalls() []*Call {
+	log.Debug("FunctionCalls()!")
 	var a []*Call
 	for _, f := range s.Fields {
+		log.Debug("f=", f)
 		a = append(a, walkFunctionCalls(f.Expr)...)
 	}
 	return a
