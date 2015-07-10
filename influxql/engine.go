@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/qiniu/log.v1"
 	"hash/fnv"
 	"math"
 	"sort"
@@ -70,6 +71,8 @@ func (m *MapReduceJob) Key() []byte {
 }
 
 func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
+	log.Debug(" MapReduceJob: m.interval=", m.interval, " m.chunkSize=", m.chunkSize, " m.key=", m.key, " m.MeasurementName=", m.MeasurementName, " m.TMax=", m.TMax, " m.TMin=", m.TMin)
+	log.Debug(" m.stmt=", m.stmt, " m.TagSet=", m.TagSet)
 	if err := m.Open(); err != nil {
 		out <- &Row{Err: err}
 		m.Close()
@@ -87,6 +90,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 	aggregates := m.stmt.FunctionCalls()
 	reduceFuncs := make([]ReduceFunc, len(aggregates))
 	for i, c := range aggregates {
+		log.Debug("i=", i, " c=", c)
 		reduceFunc, err := InitializeReduceFunc(c)
 		if err != nil {
 			out <- &Row{Err: err}
@@ -94,6 +98,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 		}
 		reduceFuncs[i] = reduceFunc
 	}
+	log.Debug("----------------------------------------------------1")
 
 	// we'll have a fixed number of points with times in buckets. Initialize those times and a slice to hold the associated values
 	var pointCountInResult int
@@ -108,6 +113,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 		intervalBottom := m.TMin / m.interval * m.interval
 		pointCountInResult = int((intervalTop - intervalBottom) / m.interval)
 	}
+	log.Debug("----------------------------------------------------2")
 
 	// For group by time queries, limit the number of data points returned by the limit and offset
 	// raw query limits are handled elsewhere
@@ -134,6 +140,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 
 	// initialize the times of the aggregate points
 	resultValues := make([][]interface{}, pointCountInResult)
+	log.Debug("make resultValues=", resultValues)
 
 	// ensure that the start time for the results is on the start of the window
 	startTimeBucket := m.TMin
@@ -142,6 +149,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 	}
 
 	for i, _ := range resultValues {
+		log.Debug("i=", i, " m.stmt.Offset=", m.stmt.Offset)
 		var t int64
 		if m.stmt.Offset > 0 {
 			t = startTimeBucket + (int64(i+1) * m.interval * int64(m.stmt.Offset))
@@ -149,16 +157,23 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 			t = startTimeBucket + (int64(i+1) * m.interval) - m.interval
 		}
 
+		log.Debug("m.TMax=", m.TMax, " t=", t)
 		// If we start getting out of our max time range, then truncate values and return
 		if t > m.TMax {
 			resultValues = resultValues[:i]
 			break
 		}
 
+		log.Debug("resultValues=", resultValues)
+
 		// we always include time so we need one more column than we have aggregates
 		vals := make([]interface{}, 0, len(aggregates)+1)
+		log.Debug("vals=", vals)
 		resultValues[i] = append(vals, time.Unix(0, t).UTC())
+		log.Debug("resultValues=", resultValues)
 	}
+
+	log.Debug("after resultValues=", resultValues)
 
 	// This just makes sure that if they specify a start time less than what the start time would be with the offset,
 	// we just reset the start time to the later time to avoid going over data that won't show up in the result.
@@ -166,8 +181,10 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 		m.TMin = resultValues[0][0].(time.Time).UnixNano()
 	}
 
+	log.Debug("----------------------------------------------------3")
 	// now loop through the aggregate functions and populate everything
 	for i, c := range aggregates {
+		log.Debug("i=", i, " c=", c)
 		if err := m.processAggregate(c, reduceFuncs[i], resultValues); err != nil {
 			out <- &Row{
 				Name: m.MeasurementName,
@@ -178,7 +195,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 			return
 		}
 	}
-
+	log.Debug("resultValues=", resultValues)
 	// filter out empty results
 	if filterEmptyResults && m.resultsEmpty(resultValues) {
 		return
@@ -188,17 +205,25 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 	columnNames := make([]string, len(m.stmt.Fields)+1)
 	columnNames[0] = "time"
 	for i, f := range m.stmt.Fields {
+		log.Debug("i=", i, " f=", f, " f.Name()=", f.Name())
 		columnNames[i+1] = f.Name()
 	}
-
+	log.Debug("resultsEmpty() resultValues=", resultValues)
+	log.Debug("----------------------------------------------------4")
 	// processes the result values if there's any math in there
 	resultValues = m.processResults(resultValues)
+	log.Debug("processResults() resultValues=", resultValues)
 
+	log.Debug("----------------------------------------------------5")
 	// handle any fill options
 	resultValues = m.processFill(resultValues)
+	log.Debug("processFill() resultValues=", resultValues)
 
+	log.Debug("----------------------------------------------------6")
 	// process derivatives
 	resultValues = m.processDerivative(resultValues)
+	log.Debug("processDerivative() resultValues=", resultValues)
+	log.Debug("----------------------------------------------------7")
 
 	row := &Row{
 		Name:    m.MeasurementName,
@@ -206,6 +231,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 		Columns: columnNames,
 		Values:  resultValues,
 	}
+	log.Debug("----------------------------------------------------8")
 
 	// and we out
 	out <- row
@@ -214,6 +240,7 @@ func (m *MapReduceJob) Execute(out chan *Row, filterEmptyResults bool) {
 // processRawQuery will handle running the mappers and then reducing their output
 // for queries that pull back raw data values without computing any kind of aggregates.
 func (m *MapReduceJob) processRawQuery(out chan *Row, filterEmptyResults bool) {
+	log.Debug("processRawQuery()!")
 	// initialize the mappers
 	for _, mm := range m.Mappers {
 		if err := mm.Begin(nil, m.TMin, m.chunkSize); err != nil {
@@ -436,6 +463,7 @@ func (m *MapReduceJob) processRawQueryDerivative(lastValueFromPreviousChunk *raw
 
 // processDerivative returns the derivatives of the results
 func (m *MapReduceJob) processDerivative(results [][]interface{}) [][]interface{} {
+	log.Debug("processDerivative()! m.stmt.HasDerivative()=", m.stmt.HasDerivative())
 	// Return early if we're not supposed to process the derivatives
 	if !m.stmt.HasDerivative() {
 		return results
@@ -866,6 +894,7 @@ func (p *Planner) Plan(stmt *SelectStatement, chunkSize int) (*Executor, error) 
 	// TODO: hanldle queries that select from multiple measurements. This assumes that we're only selecting from a single one
 	jobs, err := tx.CreateMapReduceJobs(stmt, tags)
 	if err != nil {
+		log.Debug("CreateMapReduceJobs() err=", err)
 		return nil, err
 	}
 

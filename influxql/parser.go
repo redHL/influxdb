@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	//	"github.com/qiniu/log.v1"
 	"io"
 	"math"
 	"regexp"
@@ -27,6 +28,7 @@ type Parser struct {
 
 // NewParser returns a new instance of Parsr.
 func NewParser(r io.Reader) *Parser {
+	//log.Debug("NewParser()!")
 	return &Parser{s: newBufScanner(r)}
 }
 
@@ -74,8 +76,10 @@ func (p *Parser) ParseQuery() (*Query, error) {
 
 // ParseStatement parses an InfluxQL string and returns a Statement AST object.
 func (p *Parser) ParseStatement() (Statement, error) {
+	//log.Debug("ParseStatement()!")
 	// Inspect the first token.
 	tok, pos, lit := p.scanIgnoreWhitespace()
+	//log.Debug("------------------------------------------1")
 	switch tok {
 	case SELECT:
 		return p.parseSelectStatement(targetNotRequired)
@@ -151,6 +155,7 @@ func (p *Parser) parseShowStatement() (Statement, error) {
 // parseCreateStatement parses a string and returns a create statement.
 // This function assumes the CREATE token has already been consumed.
 func (p *Parser) parseCreateStatement() (Statement, error) {
+	//log.Debug("parseCreateStatement()!")
 	tok, pos, lit := p.scanIgnoreWhitespace()
 	if tok == CONTINUOUS {
 		return p.parseCreateContinuousQueryStatement()
@@ -629,6 +634,7 @@ func (p *Parser) parsePrivilege() (Privilege, error) {
 // parseSelectStatement parses a select string and returns a Statement AST object.
 // This function assumes the SELECT token has already been consumed.
 func (p *Parser) parseSelectStatement(tr targetRequirement) (*SelectStatement, error) {
+	//log.Debug("parseSelectStatement(tr targetRequirement)!")
 	stmt := &SelectStatement{}
 	var err error
 
@@ -1108,6 +1114,7 @@ func (p *Parser) parseShowDatabasesStatement() (*ShowDatabasesStatement, error) 
 // parseCreateContinuousQueriesStatement parses a string and returns a CreateContinuousQueryStatement.
 // This function assumes the "CREATE CONTINUOUS" tokens have already been consumed.
 func (p *Parser) parseCreateContinuousQueryStatement() (*CreateContinuousQueryStatement, error) {
+	//log.Debug("parseCreateContinuousQueryStatement()!")
 	stmt := &CreateContinuousQueryStatement{}
 
 	// Expect a "QUERY" token.

@@ -3,13 +3,14 @@ package tsdb
 import (
 	"errors"
 	"fmt"
-	"log"
+	//"log"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/influxdb/influxdb/influxql"
 	"github.com/influxdb/influxdb/meta"
+	"github.com/qiniu/log.v1"
 )
 
 // QueryExecutor executes every statement in an influxdb Query. It is responsible for
@@ -120,6 +121,7 @@ func (q *QueryExecutor) Authorize(u *meta.UserInfo, query *influxql.Query, datab
 // It sends results down the passed in chan and closes it when done. It will close the chan
 // on the first statement that throws an error.
 func (q *QueryExecutor) ExecuteQuery(query *influxql.Query, database string, chunkSize int) (<-chan *influxql.Result, error) {
+	log.Debug("ExecuteQuery(query *influxql.Query, database string, chunkSize int)! database=", database, " chunkSize=", chunkSize, " query=", query)
 	// Execute each statement. Keep the iterator external so we can
 	// track how many of the statements were executed
 	results := make(chan *influxql.Result)
@@ -127,6 +129,7 @@ func (q *QueryExecutor) ExecuteQuery(query *influxql.Query, database string, chu
 		var i int
 		var stmt influxql.Statement
 		for i, stmt = range query.Statements {
+			log.Debug("i=", i, " stmt=", stmt)
 			// If a default database wasn't passed in by the caller, check the statement.
 			// Some types of statements have an associated default database, even if it
 			// is not explicitly included.
@@ -203,9 +206,11 @@ func (q *QueryExecutor) ExecuteQuery(query *influxql.Query, database string, chu
 
 // executeSelectStatement plans and executes a select statement against a database.
 func (q *QueryExecutor) executeSelectStatement(statementID int, stmt *influxql.SelectStatement, results chan *influxql.Result, chunkSize int) error {
+	log.Debug("executeSelectStatement()! statementID=", statementID, " chunkSize=", chunkSize, " stmt=", stmt)
 	// Perform any necessary query re-writing.
 	stmt, err := q.rewriteSelectStatement(stmt)
 	if err != nil {
+		log.Debug("rewriteSelectStatement() err=", err)
 		return err
 	}
 
@@ -213,6 +218,7 @@ func (q *QueryExecutor) executeSelectStatement(statementID int, stmt *influxql.S
 	p := influxql.NewPlanner(q)
 	e, err := p.Plan(stmt, chunkSize)
 	if err != nil {
+		log.Debug("Plan(), err=", err)
 		return err
 	}
 
@@ -222,6 +228,7 @@ func (q *QueryExecutor) executeSelectStatement(statementID int, stmt *influxql.S
 	// Stream results from the channel. We should send an empty result if nothing comes through.
 	resultSent := false
 	for row := range ch {
+		log.Debug("row=", row)
 		if row.Err != nil {
 			return row.Err
 		} else {
@@ -239,6 +246,7 @@ func (q *QueryExecutor) executeSelectStatement(statementID int, stmt *influxql.S
 
 // rewriteSelectStatement performs any necessary query re-writing.
 func (q *QueryExecutor) rewriteSelectStatement(stmt *influxql.SelectStatement) (*influxql.SelectStatement, error) {
+	log.Debug("rewriteSelectStatement()")
 	var err error
 
 	// Expand regex expressions in the FROM clause.

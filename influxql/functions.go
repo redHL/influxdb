@@ -9,6 +9,7 @@ package influxql
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/qiniu/log.v1"
 	"math"
 	"math/rand"
 	"sort"
@@ -124,6 +125,7 @@ func InitializeMapFunc(c *Call) (MapFunc, error) {
 
 // InitializeReduceFunc takes an aggregate call from the query and returns the ReduceFunc
 func InitializeReduceFunc(c *Call) (ReduceFunc, error) {
+	log.Debug("InitializeReduceFunc(c *Call)!")
 	// Retrieve reduce function by name.
 	switch c.Name {
 	case "count":

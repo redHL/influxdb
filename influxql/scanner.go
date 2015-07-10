@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	//"github.com/qiniu/log.v1"
 	"io"
 	"strings"
 )
@@ -16,6 +17,7 @@ type Scanner struct {
 
 // NewScanner returns a new instance of Scanner.
 func NewScanner(r io.Reader) *Scanner {
+	//log.Debug("NewScanner()")
 	return &Scanner{r: &reader{r: bufio.NewReader(r)}}
 }
 
@@ -312,6 +314,7 @@ type bufScanner struct {
 
 // newBufScanner returns a new buffered scanner for a reader.
 func newBufScanner(r io.Reader) *bufScanner {
+	//	log.Debug("newBufScanner()!")
 	return &bufScanner{s: NewScanner(r)}
 }
 

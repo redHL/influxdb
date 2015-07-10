@@ -10,6 +10,7 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/influxdb/influxdb/influxql"
 	"github.com/influxdb/influxdb/meta"
+	"github.com/qiniu/log.v1"
 )
 
 // tx represents a transaction that spans multiple shard data stores.
@@ -50,20 +51,26 @@ func (tx *tx) SetNow(now time.Time) { tx.now = now }
 func (tx *tx) CreateMapReduceJobs(stmt *influxql.SelectStatement, tagKeys []string) ([]*influxql.MapReduceJob, error) {
 	jobs := []*influxql.MapReduceJob{}
 	for _, src := range stmt.Sources {
+		log.Debug("+++++++++++++++++++++++++++++++++++++++++++++++++++1")
 		mm, ok := src.(*influxql.Measurement)
 		if !ok {
 			return nil, fmt.Errorf("invalid source type: %#v", src)
 		}
 
+		log.Debug("+++++++++++++++++++++++++++++++++++++++++++++++++++2")
 		// get the index and the retention policy
 		rp, err := tx.meta.RetentionPolicy(mm.Database, mm.RetentionPolicy)
 		if err != nil {
 			return nil, err
 		}
+
+		log.Debug("+++++++++++++++++++++++++++++++++++++++++++++++++++3")
 		m := tx.store.Measurement(mm.Database, mm.Name)
 		if m == nil {
 			return nil, ErrMeasurementNotFound(influxql.QuoteIdent([]string{mm.Database, "", mm.Name}...))
 		}
+
+		log.Debug("+++++++++++++++++++++++++++++++++++++++++++++++++++4")
 
 		tx.measurement = m
 
@@ -72,17 +79,27 @@ func (tx *tx) CreateMapReduceJobs(stmt *influxql.SelectStatement, tagKeys []stri
 		var whereFields []string
 		var selectTags []string
 
+		/*	for _, f := range stmt.Fields {
+			if !m.HasField(n) {
+				return return nil, fmt.Errorf("unknown field or tag name in select clause: %s", f)
+			}
+		}*/
+
 		for _, n := range stmt.NamesInSelect() {
+			log.Debug("n=", n)
 			if m.HasField(n) {
 				selectFields = append(selectFields, n)
 				continue
 			}
+			log.Debug("m.HasField(n)=", m.HasField(n))
 			if !m.HasTagKey(n) {
 				return nil, fmt.Errorf("unknown field or tag name in select clause: %s", n)
 			}
+			log.Debug("m.HasTagKey(n)=", m.HasTagKey(n))
 			selectTags = append(selectTags, n)
 			tagKeys = append(tagKeys, n)
 		}
+
 		for _, n := range stmt.NamesInWhere() {
 			if n == "time" {
 				continue

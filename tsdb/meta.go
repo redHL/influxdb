@@ -12,6 +12,7 @@ import (
 	"github.com/influxdb/influxdb/tsdb/internal"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/qiniu/log.v1"
 )
 
 //go:generate protoc --gogo_out=. internal/meta.proto
@@ -319,7 +320,8 @@ func (m *Measurement) SeriesKeys() []string {
 func (m *Measurement) HasTagKey(k string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	_, hasTag := m.seriesByTagKeyValue[k]
+	ta, hasTag := m.seriesByTagKeyValue[k]
+	log.Debug("ta=", ta)
 	return hasTag
 }
 

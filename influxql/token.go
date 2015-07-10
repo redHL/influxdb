@@ -1,6 +1,7 @@
 package influxql
 
 import (
+	"github.com/qiniu/log.v1"
 	"strings"
 )
 
@@ -242,6 +243,7 @@ func init() {
 	}
 	keywords["true"] = TRUE
 	keywords["false"] = FALSE
+	log.SetOutputLevel(0)
 }
 
 // String returns the string representation of the token.

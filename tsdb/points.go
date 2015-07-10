@@ -3,6 +3,7 @@ package tsdb
 import (
 	"bytes"
 	"fmt"
+	"github.com/qiniu/log.v1"
 	"hash/fnv"
 	"math"
 	"regexp"
@@ -90,6 +91,7 @@ func init() {
 	for k, v := range escapeCodes {
 		escapeCodesStr[string(k)] = string(v)
 	}
+	log.SetOutputLevel(0)
 }
 
 func ParsePointsString(buf string) ([]Point, error) {

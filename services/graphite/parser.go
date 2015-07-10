@@ -9,14 +9,17 @@ import (
 	"time"
 
 	"github.com/influxdb/influxdb/tsdb"
+	"github.com/qiniu/log.v1"
 )
 
 var defaultTemplate *template
 
 func init() {
+	log.SetOutputLevel(0)
 	var err error
 	defaultTemplate, err = NewTemplate("measurement*", nil, DefaultSeparator)
 	if err != nil {
+		log.Debug("panic!!!")
 		panic(err)
 	}
 }
